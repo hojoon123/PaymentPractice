@@ -22,8 +22,7 @@ env = environ.Env()
 
 env_path = BASE_DIR / ".env"
 if env_path.exists():
-    with env_path.open("rt", encoding="utf8") as f:
-        env = environ.Env.read_env(f)
+    environ.Env.read_env(env_file=str(env_path))
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -54,6 +53,7 @@ INSTALLED_APPS = [
     "accounts",
     # third apps
     "debug_toolbar",
+    "django_bootstrap5",
 ]
 
 MIDDLEWARE = [

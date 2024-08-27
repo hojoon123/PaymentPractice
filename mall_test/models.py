@@ -1,0 +1,65 @@
+import logging
+from uuid import uuid4
+import requests
+
+from django.core.validators import MinValueValidator
+from django.db import models
+from django.http import Http404
+
+from iamport import Iamport
+from PaymentPractice import settings
+
+logger = logging.getLogger("portone")
+
+
+# Create your models here.
+class Payment(models.Model):
+    class StatusChoices(models.TextChoices):
+        READY = "ready", "미결제"
+        PAID = "paid", "결제완료"
+        CANCELLED = "cencelled", "결제취소"
+        FAILED = "failed", "결제실패"
+        VIRTUAL_ACCOUNT_ISSUED = "virtualAccountIssued", "가상계좌"
+
+    uid = models.UUIDField(default=uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    amount = models.PositiveIntegerField(
+        validators=[
+            MinValueValidator(1, message="1원 이상의 금액을 지정해주세요."),
+        ]
+    )
+
+    # ready, paid, cancelled, failed
+    status = models.CharField(
+        max_length=23,
+        default=StatusChoices.READY,
+        choices=StatusChoices.choices,
+        db_index=True,
+    )
+    is_paid_ok = models.BooleanField(default=False, db_index=True)
+
+    @property
+    def merchant_uid(self) -> str:
+        return self.uid.hex
+
+    # TODO: 포트원 REST API를 통해서 결제를 검증해야만 합니다.
+    def portone_check(self, commit=True):
+        try:
+            response = requests.get(
+                f"https://api.portone.io/payments/{self.merchant_uid}",
+                headers={"Authorization": f"PortOne {settings.PORTONE_API_SECRET}"},
+            )
+
+        except (Iamport.ResponseError, Iamport.HttpError) as e:
+            logger.error(str(e), exc_info=e)
+            raise Http404(str(e))
+
+        meta = response.json()  # JSON 응답을 파싱합니다.
+
+        self.status = meta["status"]
+        self.is_paid_ok = (
+            meta["status"] == "PAID" and meta["amount"]["total"] == self.amount
+        )
+
+        if commit:
+            self.save()

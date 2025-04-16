@@ -255,14 +255,26 @@ class Order(models.Model):
         ordered_product_list = []
         for cart_product in cart_product_list:
             product = cart_product.product
-            ordered_product = OrderedProduct(
-                order=order,
-                product=product,
-                name=product.name,
-                price=product.price,
-                quantity=cart_product.quantity,
-            )
-            ordered_product_list.append(ordered_product)
+            option = cart_product.option
+            # 중복된 product와 option 조합이 있는지 확인
+            existing_ordered_product = OrderedProduct.objects.filter(
+                order=order, product=product, option=option
+            ).first()
+            if existing_ordered_product:
+                # 이미 존재하는 경우 수량을 추가
+                existing_ordered_product.quantity += cart_product.quantity
+                existing_ordered_product.save()
+            else:
+                # 새로 추가하는 경우
+                ordered_product = OrderedProduct(
+                    order=order,
+                    product=product,
+                    option=option,
+                    name=product.name,
+                    price=product.price + (option.additional_price if option else 0),
+                    quantity=cart_product.quantity,
+                )
+                ordered_product_list.append(ordered_product)
 
         OrderedProduct.objects.bulk_create(ordered_product_list)
 
@@ -276,6 +288,9 @@ class Order(models.Model):
 class OrderedProduct(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, db_constraint=False)
     product = models.ForeignKey(Product, on_delete=models.CASCADE, db_constraint=False)
+    option = models.ForeignKey(
+        ProductOption, on_delete=models.CASCADE, null=True, blank=True
+    )
     name = models.CharField(
         "상품명", max_length=100, help_text="주문 시점의 상품명을 저장합니다."
     )
@@ -288,7 +303,10 @@ class OrderedProduct(models.Model):
 
     class Meta:
         constraints = [
-            UniqueConstraint(fields=["order", "product"], name="unique_order_product")
+            UniqueConstraint(
+                fields=["order", "product", "option"],
+                name="unique_order_product_option",
+            )
         ]
 
 
